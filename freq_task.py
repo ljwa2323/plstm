@@ -1,3 +1,12 @@
+
+##
+##
+##    实现phased lstm 神经网络
+##
+##
+##
+
+
 import time
 import sys
 import lasagne
@@ -23,12 +32,14 @@ def get_train_and_val_fn(inputs, target_var, network):
     
     # Calculate training accuracy
     
-    train_acc = T.mean(T.eq(T.argmax(prediction,
-                                     axis=1),target_var),
-                          dtype=theano.config.floatX)
+    train_acc = T.mean(T.eq(T.argmax(prediction, axis=1),
+                            target_var),
+                      dtype=theano.config.floatX)
+    
     # Calculate crossentropy between predictions and targets
     
     loss = lasagne.objectives.categorical_crossentropy(prediction, target_var)
+    
     loss = loss.mean()
 
     # Fetch trainable parameters
@@ -46,88 +57,151 @@ def get_train_and_val_fn(inputs, target_var, network):
     # Again calculate crossentropy, this time using (test-time) determinstic pass
     
     test_loss = lasagne.objectives.categorical_crossentropy(test_prediction, target_var)
+    
     test_loss = test_loss.mean()
     
     # Also, create an expression for the classification accuracy:
-    test_acc = T.mean(T.eq(T.argmax(test_prediction, axis=1), target_var),
+    
+    test_acc = T.mean(T.eq(T.argmax(test_prediction, axis=1),
+                           target_var),
                       dtype=theano.config.floatX)
 
     # Get the raw output activations, for every layer
+    
     out_fn = get_layer_output_fn(inputs, network)
 
     # Add in the targets to the function inputs
+    
     fn_inputs = inputs + [target_var]
+    
     # Compile a train function with the updates, returning loss and accuracy
-    train_fn = theano.function(fn_inputs, [loss, train_acc], updates=updates)
+    
+    train_fn = theano.function(fn_inputs,
+                               [loss, train_acc],
+                               updates=updates)
+    
     # Compile a second function computing the validation loss and accuracy:
-    val_fn = theano.function(fn_inputs, [test_loss, test_acc])
+    val_fn = theano.function(fn_inputs,
+                             [test_loss, test_acc])
 
     return train_fn, val_fn, out_fn
 
 def get_rnn(input_var,
             mask_var,
             time_var,
-            arch_size,
+            
+            arch_size,  # 神经元数量
+            
             GRAD_CLIP=100,
+            
             bn=False,
+            
             model_type='plstm'):
-
     
     # (batch size, max sequence length, number of features)
     
-    l_in = lasagne.layers.InputLayer(shape=(None, None, 1), input_var=input_var) #L0?
+    l_in = lasagne.layers.InputLayer(shape=(None, None, 1),
+                                     
+                                     input_var=input_var) #L0?
     
     # Mask as matrices of dimensionality (N_BATCH, MAX_LENGTH)
     
-    l_mask = lasagne.layers.InputLayer(shape=(None, None), input_var=mask_var) #l6
+    l_mask = lasagne.layers.InputLayer(shape=(None, None),
+
+                                       input_var=mask_var) #l6
     
     # Time as matrices of dimensionality (N_BATCH, MAX_LENGTH)
-    l_t = lasagne.layers.InputLayer(shape=(None, None), input_var=time_var) #l5
+    
+    l_t = lasagne.layers.InputLayer(shape=(None, None),
+
+                                    input_var=time_var) #l5
 
     # Allows arbitrary sizes
     batch_size, seq_len, _ = input_var.shape
 
     if model_type=='plstm':
+        
         print('Using PLSTM.')
+        
         # RNN layer 1
+        
         l_forward = PLSTMLayer(
-            
-            l_in,
-            time_input=l_t,
-            num_units=arch_size[1],
-            mask_input=l_mask,
-            ingate=Gate(b=lasagne.init.Constant(-0.1)),
-            forgetgate=Gate(b=lasagne.init.Constant(0), nonlinearity=lasagne.nonlinearities.sigmoid),
-            cell=Gate(W_cell=None, nonlinearity=lasagne.nonlinearities.tanh),
-            outgate=Gate(),
-            nonlinearity=lasagne.nonlinearities.tanh,
-            grad_clipping=GRAD_CLIP,
-            bn=bn,
-            learn_time_params=[True, True, True],
-            timegate=PLSTMTimeGate(
-                Period=ExponentialUniformInit((1,3)),
-                Shift=lasagne.init.Uniform( (0., 100)),
-                On_End=lasagne.init.Constant(0.05))
-            )
+                                l_in,
+
+                                time_input=l_t,
+                                
+                                num_units=arch_size[1],  # PLSTM 隐含层神经元数量
+                                
+                                mask_input=l_mask,
+                                
+                                ingate=Gate(b=lasagne.init.Constant(-0.1)),
+                                
+                                forgetgate=Gate(b=lasagne.init.Constant(0),
+                                                nonlinearity=lasagne.nonlinearities.sigmoid),
+
+                                cell=Gate(W_cell=None, nonlinearity=lasagne.nonlinearities.tanh),
+
+                            
+                                outgate=Gate(),
+                                
+                                nonlinearity=lasagne.nonlinearities.tanh,
+                                
+                                grad_clipping=GRAD_CLIP,
+                                
+                                bn=bn,
+                                
+                                learn_time_params=[True, True, True],  # 三个参数都要学习
+
+                                
+                                timegate=PLSTMTimeGate(
+                                    
+                                    Period=ExponentialUniformInit((1,3)),
+                                    
+                                    Shift=lasagne.init.Uniform( (0., 100)),
+                                    
+                                    On_End=lasagne.init.Constant(0.05))
+                                
+                                )
 
     else:
+        
         print('Using LSTM, with BN: {}'.format(bn))
+        
         # RNN layers
+        
         l_forward = LSTMWBNLayer(lasagne.layers.ConcatLayer([l_in, lasagne.layers.ReshapeLayer(l_t,[batch_size, seq_len, 1])], axis=2),
-                    num_units=arch_size[1],
-                    mask_input=l_mask, grad_clipping=GRAD_CLIP,
-                    ingate=Gate(b=lasagne.init.Constant(-0.1)),
-                    forgetgate=Gate(b=lasagne.init.Constant(0), nonlinearity=lasagne.nonlinearities.sigmoid),
-                    cell=Gate(W_cell=None, nonlinearity=lasagne.nonlinearities.tanh),
-                    outgate=Gate(),
-                    nonlinearity=lasagne.nonlinearities.tanh,
-                    bn=bn)
+
+                                num_units=arch_size[1],
+                                 
+                                mask_input=l_mask,
+                                 grad_clipping=GRAD_CLIP,
+                                 
+                                ingate=Gate(b=lasagne.init.Constant(-0.1)),
+                                 
+                                forgetgate=Gate(b=lasagne.init.Constant(0), nonlinearity=lasagne.nonlinearities.sigmoid),
+                                 
+                                cell=Gate(W_cell=None, nonlinearity=lasagne.nonlinearities.tanh),
+                                 
+                                outgate=Gate(),
+                                 
+                                nonlinearity=lasagne.nonlinearities.tanh,
+                                 
+                                bn=bn)
 
     # Need to slice off the last layer now
+    # 取最后一个输出吗
+    #  axis=1 是 time_step 维度   l_forward[:,-1]
     l_slice = lasagne.layers.SliceLayer(l_forward, -1, axis=1) #l11
 
     # Softmax
-    l_dense = lasagne.layers.DenseLayer(l_slice, num_units=arch_size[2],nonlinearity=lasagne.nonlinearities.leaky_rectify)
+    
+    l_dense = lasagne.layers.DenseLayer(l_slice,
+                                        
+                                        num_units=arch_size[2],
+                                        
+                                        nonlinearity=lasagne.nonlinearities.leaky_rectify)
+
+    
     l_out = lasagne.layers.NonlinearityLayer(l_dense, nonlinearity=lasagne.nonlinearities.softmax)
 
     return l_out
@@ -251,16 +325,11 @@ class SinWaveComboIterator(object):
             b += 1
 
 if __name__ == '__main__':
-
-    
     parser = argparse.ArgumentParser(description='Load a timeful RNN using PLSTM.')
-
     # File and path naming stuff
-    
     parser.add_argument('--run_id',   default=os.environ.get('LSB_JOBID',''), help='ID of the run, used in saving.')
     parser.add_argument('--filename', default='freq_task', help='Filename to save model and log to.')
     parser.add_argument('--resume',   default=None, help='Filename to load model and log from.')
-
     # Control meta parameters
     parser.add_argument('--exp',        default='task1', help='Choose whether to run "task1" (single freq) or "task2" (freq combo) experiment.')
     parser.add_argument('--seed',       default=42,   type=int, help='Initialize the random seed of the run (for reproducibility).')
@@ -270,8 +339,6 @@ if __name__ == '__main__':
     parser.add_argument('--patience',   default=100,  type=int, help='How long to wait for an increase in validation error before quitting.')
     parser.add_argument('--save_every', default=1000, type=int, help='How many epochs to wait between a save.')
     parser.add_argument('--log_only',   default=0,    type=int, help='Whether to save parameters.')
-
-
     # Control architecture and run data
     parser.add_argument('--model_type',       default='plstm', help='Choose which model type to use.')
     parser.add_argument('--batch_norm',       default=0, type=int, help='Batch normalize.')
@@ -289,17 +356,10 @@ if __name__ == '__main__':
 
     #  Set filename
     if args.exp=='task2':
-        comb_filename = '{}_task2_{}_bn_{}_{}'.format(args.filename,
-                                                      args.model_type,
-                                                      args.batch_norm,
-                                                      args.seed)
+        comb_filename = '{}_task2_{}_bn_{}_{}'.format(args.filename, args.model_type, args.batch_norm, args.seed)
     else:
-        comb_filename = '{}_task1_{}_bn_{}_reg_samp_{}_samp_res_{}_{}'.format(args.filename,
-                                                                              args.model_type,
-                                                                              args.batch_norm,
-                                                                              args.sample_regularly,
-                                                                              args.sample_res,
-                                                                              args.seed)
+        comb_filename = '{}_task1_{}_bn_{}_reg_samp_{}_samp_res_{}_{}'.format(args.filename, args.model_type,
+            args.batch_norm, args.sample_regularly, args.sample_res, args.seed)
     if args.run_id != '':
         comb_filename += '_{}'.format(args.run_id)
 
