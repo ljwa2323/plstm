@@ -1,3 +1,16 @@
+
+##
+##
+##          定义 phased lstm 层 
+##
+##
+##
+##
+##
+##
+##
+
+
 import numpy as np
 import theano
 import theano.tensor as T
@@ -30,11 +43,14 @@ from lasagne.random import get_rng
 
 class PLSTMTimeGate(object):
     """
+        返回一个 时间门的类 ， 包含属性 周期， 相位，开放的时间长度比例
+
+    
     """
     def __init__(self,
                  Period=init.Uniform((10,100)),  # 初始化周期
                  Shift=init.Uniform( (0., 1000.)),  # 初始化相位
-                 On_End=init.Constant(0.05)):   #  开放时间的比例
+                 On_End=init.Constant(0.05)):   #  开放时间长度比例
         
         self.Period = Period
         self.Shift = Shift
@@ -42,22 +58,39 @@ class PLSTMTimeGate(object):
 
 class PLSTMLayer(MergeLayer):
     r"""
+
+        返回一个PLSTM 层 类
+
+        输入属性有  incoming , incoming 包含了 x 的输入
+        
     """
-    # GATE defaults: W_in=init.Normal(0.1), W_hid=init.Normal(0.1), W_cell=init.Normal(0.1), b=init.Constant(0.), nonlinearity=nonlinearities.sigmoid
+##    GATE defaults:
+##    W_in=init.Normal(0.1),
+##    W_hid=init.Normal(0.1),
+##    W_cell=init.Normal(0.1),
+##    b=init.Constant(0.),
+##    nonlinearity=nonlinearities.sigmoid
 
     
     def __init__(self,
-                 incoming,    # 
+
+                 
+                 incoming,    #  就是x的输入  (None, features)
                  time_input,  #  每一个 batch的时间点 信息  ,int
+                 mask_input=None,  #  time_step 决定哪些
+                 cell_init=init.Constant(0.),  #  细胞状态初始化
+                 hid_init=init.Constant(0.),  # 隐含层状态初始化
+
                  num_units,  # 神经元节点数
+
+                 
                  
                  ingate=Gate(b=lasagne.init.Constant(0)),  # 初始化输入门
                  
                  forgetgate=Gate(b=lasagne.init.Constant(2),nonlinearity=nonlinearities.sigmoid), # 初始化遗忘门
 
-                  
                  timegate=PLSTMTimeGate(),  # 创建一个时间门
-                 
+
                  cell=Gate(W_cell=None, nonlinearity=nonlinearities.tanh),  # 创建细胞状态控制的门
                  
                  outgate=Gate(), # 初始化输出门
@@ -65,21 +98,12 @@ class PLSTMLayer(MergeLayer):
                  
                  nonlinearity=nonlinearities.tanh,  # 这一层的输出的 非线性激活函数
 
-                 
-                 cell_init=init.Constant(0.),  #  细胞状态初始化
-                 
-                 hid_init=init.Constant(0.),  # 隐含层状态初始化
-
-                 
                  backwards=False,
 
-                 
                  learn_init=False,
-
                  
                  peepholes=True,   #  是否利用窥视孔连接
 
-                 
                  gradient_steps=-1,
 
                  
@@ -90,16 +114,12 @@ class PLSTMLayer(MergeLayer):
                  
                  precompute_input=True,
                  
-                 mask_input=None,  #  time_step 决定哪些
-                 
                  only_return_final=False,
                  
                  bn=False,  # 是否采用另外一种 结构  BN-LSTM
 
-                 
                  learn_time_params=[True, True, False],  # 是否学习 事件门的参数  
 
-                 
                  off_alpha=1e-3,   #  leak rate
                  
                  **kwargs):
@@ -147,10 +167,12 @@ class PLSTMLayer(MergeLayer):
             incomings.append(cell_init)
             self.cell_init_incoming_index = len(incomings)-1 # 更新索引信息
 
- 
+        
 
         # Initialize parent layer
+        super(PLSTMLayer, self).__init__(incomings, **kwargs)
 
+        
 
 ##---------------------------------------------------------
 ##         这里给出MergeLayer 只是为了更好的理解代码
@@ -177,7 +199,7 @@ class PLSTMLayer(MergeLayer):
 ##                self.params = OrderedDict()
 ##                self.get_output_kwargs = []
 ##                
-##                super(PLSTMLayer, self).__init__(incomings, **kwargs)
+
 ##---------------------------------------------------------
 
         # If the provided nonlinearity is None, make it linear
@@ -241,17 +263,21 @@ class PLSTMLayer(MergeLayer):
         self.off_alpha = off_alpha
         # leak_rate
         
-        if timegate == None: #  如果时间门为空的话， 那么指定生成一个 事件门 instance 
+        if timegate == None: #  如果时间门为空的话， 那么指定生成一个 时间门 instance 
             timegate = PLSTMTimeGate()
 
             
         def add_timegate_params(gate, gate_name):
+            
             """ Convenience function for adding layer parameters from a Gate
             instance. """
+
+            # self.add_param
             return (self.add_param(gate.Period, (num_units, ), #  这里相当于给的 shape ，用initializer 类 进行初始化
+                                                               #  这个地方为什么要留一个维度呢， 这三个参数都只是针对 h 和 c 进行的
                                    name="Period_{}".format(gate_name),
                                    trainable=learn_time_params[0]),
-                    self.add_param(gate.Shift, (num_units, ),
+                    self.add_param(gate.Shift, (num_units, ),  
                                    name="Shift_{}".format(gate_name),
                                    trainable=learn_time_params[1]),
                     self.add_param(gate.On_End, (num_units, ),
@@ -264,24 +290,33 @@ class PLSTMLayer(MergeLayer):
 
 
         #  这里 实际上  是创建  self--PLSTMLayer  类 的 变量  进行初始化
-        #  初始化事件门的参数
+        #  初始化时间门的参数
+        
         (self.period_timegate,
          self.shift_timegate,
          self.on_end_timegate) =  add_timegate_params(timegate, 'timegate')
 
         # Add in parameters from the supplied Gate instances
         #  初始化 输入门，  遗忘门，   输出门的参数
-        (self.W_in_to_ingate, self.W_hid_to_ingate, self.b_ingate,
+        (self.W_in_to_ingate,
+         self.W_hid_to_ingate,
+         self.b_ingate,
          self.nonlinearity_ingate) = add_gate_params(ingate, 'ingate')
 
-        (self.W_in_to_forgetgate, self.W_hid_to_forgetgate, self.b_forgetgate,
+        (self.W_in_to_forgetgate,
+         self.W_hid_to_forgetgate,
+         self.b_forgetgate,
          self.nonlinearity_forgetgate) = add_gate_params(forgetgate,
                                                          'forgetgate')
 
-        (self.W_in_to_cell, self.W_hid_to_cell, self.b_cell,
+        (self.W_in_to_cell,
+         self.W_hid_to_cell,
+         self.b_cell,
          self.nonlinearity_cell) = add_gate_params(cell, 'cell')
 
-        (self.W_in_to_outgate, self.W_hid_to_outgate, self.b_outgate,
+        (self.W_in_to_outgate,
+         self.W_hid_to_outgate,
+         self.b_outgate,
          self.nonlinearity_outgate) = add_gate_params(outgate, 'outgate')
 
 
@@ -292,6 +327,7 @@ class PLSTMLayer(MergeLayer):
         #  如果采用了窥视孔的连接，那么还要初始化窥视孔连接的参数
 
         #  窥视孔 在三个门 都有一个 W.cell 权重矩阵
+        
         if self.peepholes:
             self.W_cell_to_ingate = self.add_param(
                 ingate.W_cell, (num_units, ), name="W_cell_to_ingate")
@@ -337,18 +373,22 @@ class PLSTMLayer(MergeLayer):
 ##
 ##
         #  如果 cell_init 是一个 Layer 类，那么就把 Layer 类赋值给 这个 plstmlayer 的 cell_init
+        
         if isinstance(cell_init, Layer):
             self.cell_init = cell_init
+            
         else:
             self.cell_init = self.add_param(
                 cell_init, (1, num_units), name="cell_init",
                 trainable=learn_init, regularizable=False)
 
         if isinstance(hid_init, Layer):
+            
             self.hid_init = hid_init
+            
         else:
             self.hid_init = self.add_param(
-                hid_init, (1, self.num_units), name="hid_init",
+                hid_init, (1, self.num_units), name="hi d_init",
                 trainable=learn_init, regularizable=False)
 
         if bn:  #  如果要做 bn-lstm 的话
@@ -371,11 +411,17 @@ class PLSTMLayer(MergeLayer):
         # will be flattened
 
         #  如果只输出最后的输出， 那么第二个维度就会被展平
+        
         if self.only_return_final:
+            
             return input_shape[0], self.num_units
+        
         # Otherwise, the shape will be (n_batch, n_steps, num_units)
+        
         else:
+            
             # 否则就返回  不同批次， 不同 步数， 神经单元
+            
             return input_shape[0], input_shape[1], self.num_units
 
     def get_output_for(self,
@@ -494,8 +540,11 @@ class PLSTMLayer(MergeLayer):
 
         
         shift_broadcast = self.shift_timegate.dimshuffle(['x',0])
+        
         period_broadcast = T.abs_(self.period_timegate.dimshuffle(['x',0]))
+        
         on_mid_broadcast = T.abs_(self.on_end_timegate.dimshuffle(['x',0])) * 0.5 * period_broadcast
+        
         on_end_broadcast = T.abs_(self.on_end_timegate.dimshuffle(['x',0])) * period_broadcast
 
         if self.precompute_input:
@@ -503,10 +552,12 @@ class PLSTMLayer(MergeLayer):
             # precompute_input the inputs dot weight matrices before scanning.
             # W_in_stacked is (n_features, 4*num_units). input is then
             # (n_time_steps, n_batch, 4*num_units).
+            
             input = T.dot(input, W_in_stacked) + b_stacked
 
         # At each call to scan, input_n will be (n_time_steps, 4*num_units).
         # We define a slicing function that extract the input to each LSTM gate
+        
         def slice_w(x, n):
             return x[:, n*self.num_units:(n+1)*self.num_units]
 
@@ -516,6 +567,7 @@ class PLSTMLayer(MergeLayer):
         #  计算前向传播过程
         
         def step(input_n, time_input_n, cell_previous, hid_previous, *args):
+            # input_n 是 
             
             if not self.precompute_input:
                 
