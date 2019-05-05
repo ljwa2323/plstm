@@ -1,14 +1,7 @@
+# 
+#          定义 phased lstm 层 
+#
 
-##
-##
-##          定义 phased lstm 层 
-##
-##
-##
-##
-##
-##
-##
 
 
 import numpy as np
@@ -27,15 +20,6 @@ from lasagne.layers.dense import DenseLayer
 from lasagne.layers import helper
 
 from lasagne.layers.recurrent import Gate
-
-
-##   这里其实还没有涉及  细胞元 个数 ， 初始化参数，然后利用 sample 函数，
-##   给定shape参数，再生成具体的数据
-##class lasagne.layers.Gate(W_in=lasagne.init.Normal(0.1),  输入门的权重
-##                            W_hid=lasagne.init.Normal(0.1),   
-##                            W_cell=lasagne.init.Normal(0.1),
-##                            b=lasagne.init.Constant(0.),  
-##                            nonlinearity=lasagne.nonlinearities.sigmoid)
 
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from lasagne.random import get_rng
@@ -64,14 +48,6 @@ class PLSTMLayer(MergeLayer):
         输入属性有  incoming , incoming 包含了 x 的输入
         
     """
-##    GATE defaults:
-##    W_in=init.Normal(0.1),
-##    W_hid=init.Normal(0.1),
-##    W_cell=init.Normal(0.1),
-##    b=init.Constant(0.),
-##    nonlinearity=nonlinearities.sigmoid
-
-    
     def __init__(self,
 
                  
@@ -172,35 +148,7 @@ class PLSTMLayer(MergeLayer):
         # Initialize parent layer
         super(PLSTMLayer, self).__init__(incomings, **kwargs)
 
-        
 
-##---------------------------------------------------------
-##         这里给出MergeLayer 只是为了更好的理解代码
-##        class MergeLayer(Layer):
-##            """
-##            This class represents a layer that aggregates input from multiple layers.
-##            It should be subclassed when implementing new types of layers that obtain
-##            their input from multiple layers.
-##            Parameters
-##            ----------
-##            incomings : a list of :class:`Layer` instances or tuples
-##                The layers feeding into this layer, or expected input shapes.
-##            name : a string or None
-##                An optional name to attach to this layer.
-##            """
-##            def __init__(self, incomings, name=None):
-##                self.input_shapes = [incoming if isinstance(incoming, tuple)
-##                                     else incoming.output_shape
-##                                     for incoming in incomings]
-##                self.input_layers = [None if isinstance(incoming, tuple)
-##                                     else incoming
-##                                     for incoming in incomings]
-##                self.name = name
-##                self.params = OrderedDict()
-##                self.get_output_kwargs = []
-##                
-
-##---------------------------------------------------------
 
         # If the provided nonlinearity is None, make it linear
         if nonlinearity is None:
@@ -255,7 +203,6 @@ class PLSTMLayer(MergeLayer):
                                    regularizable=False),
                 gate.nonlinearity)
 
-        
 
         # PHASED LSTM: Initialize params for the time gate
         #  初始化时间门的 参数 
@@ -286,8 +233,6 @@ class PLSTMLayer(MergeLayer):
 
         
         print('Learnableness: {}'.format(learn_time_params))
-
-
 
         #  这里 实际上  是创建  self--PLSTMLayer  类 的 变量  进行初始化
         #  初始化时间门的参数
@@ -342,36 +287,6 @@ class PLSTMLayer(MergeLayer):
 
         # Setup initial values for the cell and the hidden units
 
-
-#        --------------------------------------------
-#       这里给出 Layer 的定义是为了更好的理解代码
-##        class Layer(object):
-##            """
-##            The :class:`Layer` class represents a single layer of a neural network. It
-##            should be subclassed when implementing new types of layers.
-##            Because each layer can keep track of the layer(s) feeding into it, a
-##            network's output :class:`Layer` instance can double as a handle to the full
-##            network.
-##            Parameters
-##            ----------
-##            incoming : a :class:`Layer` instance or a tuple
-##                The layer feeding into this layer, or the expected input shape.
-##            name : a string or None
-##                An optional name to attach to this layer.
-##            """
-##            def __init__(self, incoming, name=None):
-##                if isinstance(incoming, tuple):
-##                    self.input_shape = incoming
-##                    self.input_layer = None
-##                else:
-##                    self.input_shape = incoming.output_shape
-##                    self.input_layer = incoming
-##
-##                self.name = name
-##                self.params = OrderedDict()
-##                self.get_output_kwargs = []
-##
-##
         #  如果 cell_init 是一个 Layer 类，那么就把 Layer 类赋值给 这个 plstmlayer 的 cell_init
         
         if isinstance(cell_init, Layer):
